@@ -1,17 +1,16 @@
 // Firebase Configuration
 const firebaseConfig = {
-    apiKey: "your-api-key-here",
-    authDomain: "your-project-id.firebaseapp.com",
-    projectId: "your-project-id",
-    storageBucket: "your-project-id.appspot.com",
-    messagingSenderId: "your-sender-id",
-    appId: "your-app-id"
+  apiKey: "AIzaSyBCxkIW06pVTT8SvDSHEwaHMcpw8hfwLjI",
+  authDomain: "phonebook-pro.firebaseapp.com",
+  projectId: "phonebook-pro",
+  storageBucket: "phonebook-pro.firebasestorage.app",
+  messagingSenderId: "1075433875615",
+  appId: "1:1075433875615:web:89e817ef0fb72ef256daaa"
 };
-
 // Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const storage = firebase.storage();
+// Note: Storage not needed - images stored as base64 in Firestore
 
 // Application State
 let currentUser = null;
@@ -147,8 +146,8 @@ async function showEditContact(contactId) {
         document.getElementById('contact-phone').value = contact.phone;
         document.getElementById('contact-address').value = contact.address;
         
-        if (contact.imageUrl) {
-            document.getElementById('image-preview').src = contact.imageUrl;
+        if (contact.imageBase64) {
+            document.getElementById('image-preview').src = contact.imageBase64;
             document.getElementById('image-preview').classList.remove('hidden');
         }
         
@@ -270,12 +269,12 @@ async function handleContactSubmit(e) {
     setButtonLoading(btn, true);
 
     try {
-        let imageUrl = document.getElementById('image-preview').src;
+        let imageBase64 = document.getElementById('image-preview').src;
         
-        // Upload image if new file selected
+        // Convert uploaded image to base64 if new file selected
         const imageFile = document.getElementById('contact-image').files[0];
         if (imageFile) {
-            imageUrl = await uploadImage(imageFile);
+            imageBase64 = await convertImageToBase64(imageFile);
         }
 
         const contactData = {
@@ -284,7 +283,7 @@ async function handleContactSubmit(e) {
             email: document.getElementById('contact-email').value,
             phone: document.getElementById('contact-phone').value,
             address: document.getElementById('contact-address').value,
-            imageUrl: imageUrl || null,
+            imageBase64: imageBase64 || null,
             userId: currentUser.id,
             createdAt: new Date().toISOString()
         };
@@ -372,7 +371,7 @@ function displayContacts(contactsToShow = allContacts) {
             ${contactsToShow.map(contact => `
                 <div class="contact-card">
                     <div class="contact-header">
-                        <img src="${contact.imageUrl || getDefaultAvatar()}" alt="Contact" class="contact-avatar">
+                        <img src="${contact.imageBase64 || getDefaultAvatar()}" alt="Contact" class="contact-avatar">
                         <div>
                             <div class="contact-name">${contact.firstName} ${contact.lastName}</div>
                         </div>
@@ -441,18 +440,22 @@ async function displayUsers() {
     }
 }
 
-// Image Upload Function
-async function uploadImage(file) {
-    try {
-        const fileName = `contact-images/${Date.now()}_${file.name}`;
-        const storageRef = storage.ref().child(fileName);
-        const snapshot = await storageRef.put(file);
-        const downloadURL = await snapshot.ref.getDownloadURL();
-        return downloadURL;
-    } catch (error) {
-        console.error('Error uploading image:', error);
-        throw new Error('Failed to upload image');
-    }
+// Image Handling Functions (Base64 instead of Firebase Storage)
+async function convertImageToBase64(file) {
+    return new Promise((resolve, reject) => {
+        // Check file size (limit to 1MB for Firestore)
+        if (file.size > 1024 * 1024) {
+            reject(new Error('Image size must be less than 1MB'));
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            resolve(e.target.result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
 }
 
 function handleImagePreview() {
@@ -460,6 +463,13 @@ function handleImagePreview() {
     const preview = document.getElementById('image-preview');
     
     if (file) {
+        // Check file size
+        if (file.size > 1024 * 1024) {
+            showError('Image size must be less than 1MB');
+            document.getElementById('contact-image').value = '';
+            return;
+        }
+
         const reader = new FileReader();
         reader.onload = function(e) {
             preview.src = e.target.result;
